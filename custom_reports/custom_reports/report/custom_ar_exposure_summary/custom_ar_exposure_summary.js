@@ -1,8 +1,6 @@
-// Copyright (c) 2025, Frappe Technologies Pvt. Ltd. and contributors
-// For license information, please see license.txt
+console.log("Custom AR Exposure Summary JS loaded 1");
 
-console.log("Custom AR Summary JS loaded 1");
-frappe.query_reports["Custom AR Summary"] = {
+frappe.query_reports["Custom AR Exposure Summary"] = {
 	filters: [
 		{
 			fieldname: "company",

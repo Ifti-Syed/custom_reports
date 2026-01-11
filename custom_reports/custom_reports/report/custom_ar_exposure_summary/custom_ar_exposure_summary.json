@@ -1,11 +1,11 @@
 {
     "doctype": "Report",
-    "report_name": "Custom AR Summary",
-    "name": "Custom AR Summary",
+    "report_name": "Custom AR Exposure Summary",
+    "name": "Custom AR Exposure Summary",
     "ref_doctype": "Sales Invoice",
     "report_type": "Script Report",
     "is_standard": "Yes",
-    "module": "Accounts",
+    "module": "Custom Reports",
     "add_total_row": 1,
     "disabled": 0,
     "roles": [

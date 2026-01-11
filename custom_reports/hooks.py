@@ -1,8 +1,8 @@
 app_name = "custom_reports"
 app_title = "Custom Reports"
-app_publisher = "bench new-app custom_reports"
-app_description = "ifti@DESKTOP-502V5I8:~/frappe-bench$ cd ~/frappe-bench"
-app_email = "Iftikhar.hussain@cvshvac.com"
+app_publisher = "CVS HVAC"
+app_description = "Custom ERPNext Reports"
+app_email = "iftikhar.hussain@cvshvac.com"
 app_license = "mit"
 
 # Apps
