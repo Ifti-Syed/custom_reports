@@ -1,19 +1,27 @@
 {
     "doctype": "Report",
-    "report_name": "Custom AR Exposure Summary",
     "name": "Custom AR Exposure Summary",
+    "report_name": "Custom AR Exposure Summary",
     "ref_doctype": "Sales Invoice",
     "report_type": "Script Report",
     "is_standard": "Yes",
     "module": "Custom Reports",
     "add_total_row": 1,
+    "prepared_report": 0,
     "disabled": 0,
+    "timeout": 300,
     "roles": [
         {
             "role": "Accounts Manager"
         },
         {
             "role": "Accounts User"
+        },
+        {
+            "role": "Sales Manager"
+        },
+        {
+            "role": "Sales User"
         }
     ]
 }
