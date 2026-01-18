@@ -48,7 +48,7 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		return Object.assign(options, {
 			layout: "fixed",        // required for freeze
 			checkboxColumn: true,   // show row checkbox
-			showTotalRow: false,
+			showTotalRow: true,
 			cellHeight: 34
 			// ❌ headerDropdown REMOVED
 		});
@@ -87,3 +87,40 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		});
 	}
 };
+
+function show_exposure_summary(report) {
+	const data = (report.data || []).filter(r => r && r.customer);
+	if (!data.length) {
+		frappe.msgprint(__("No data to summarize"));
+		return;
+	}
+
+	const sum = (field) => data.reduce((a, r) => a + (parseFloat(r[field]) || 0), 0);
+
+	const currency = data[0].currency || "";
+	const fmt = (val) => format_currency(val, currency, 2);
+
+	frappe.msgprint({
+		title: __("AR Exposure Summary"),
+		wide: true,
+		message: `
+			<table class="table table-bordered">
+				<tr><td><b>${__("Total Customers")}</b></td><td class="text-right">${data.length}</td></tr>
+				<tr><td><b>${__("Total Outstanding")}</b></td><td class="text-right">${fmt(sum("outstanding"))}</td></tr>
+				<tr><td><b>${__("Future Payment")}</b></td><td class="text-right">${fmt(sum("future_payment"))}</td></tr>
+				<tr><td><b>${__("Unbilled Sales")}</b></td><td class="text-right">${fmt(sum("unbilled_sales"))}</td></tr>
+				<tr><td><b>${__("Cheques Required")}</b></td><td class="text-right">${fmt(sum("cheques_required"))}</td></tr>
+				<tr><td><b>${__("OPRs Under Production")}</b></td><td class="text-right">${fmt(sum("oprs_under_production"))}</td></tr>
+				<tr><td><b>${__("OPRs On Hold")}</b></td><td class="text-right">${fmt(sum("oprs_on_hold"))}</td></tr>
+				<tr class="bg-light font-weight-bold">
+					<td>${__("Total Exposure")}</td>
+					<td class="text-right">${fmt(sum("total_exposure"))}</td>
+				</tr>
+				<tr class="bg-info font-weight-bold">
+					<td>${__("Total Exposure After Hold")}</td>
+					<td class="text-right">${fmt(sum("total_exposure_after_hold"))}</td>
+				</tr>
+			</table>
+		`
+	});
+}
