@@ -1,6 +1,6 @@
 // /home/ifti/frappe-bench/apps/custom_reports/custom_reports/custom_reports/report/custom_ar_exposure_summary/custom_ar_exposure_summary.js
 
-console.log("🔥 Custom AR Exposure Summary JS LOADED 🔥 FINAL 1 ");
+console.log("🔥 Custom AR Exposure Summary JS LOADED 🔥 FINAL ");
 
 frappe.query_reports["Custom AR Exposure Summary"] = {
 	filters: [
@@ -40,9 +40,8 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		}
 	],
 
-	// Freeze columns AFTER "Payment Terms"
-	// Customer | Sales Person | Payment Terms
-	freeze_columns: 3,
+	// Freeze first 2 columns: Customer and Sales Person
+	freeze_columns: 2,
 
 	get_datatable_options(options) {
 		return Object.assign(options, {
@@ -50,7 +49,6 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 			checkboxColumn: true,   // show row checkbox
 			showTotalRow: true,
 			cellHeight: 34
-			// ❌ headerDropdown REMOVED
 		});
 	},
 
@@ -84,6 +82,18 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 	onload(report) {
 		report.page.add_inner_button(__("Show Summary"), () => {
 			show_exposure_summary(report);
+		});
+
+		report.page.add_inner_button(__("Export Excel"), () => {
+			const filters = report.get_values();
+			if (!filters || !filters.company || !filters.report_date) {
+				frappe.msgprint(__("Please set Company and Report Date before exporting."));
+				return;
+			}
+			window.location = frappe.urllib.get_full_url(
+				"/api/method/custom_reports.custom_reports.report.custom_ar_exposure_summary.custom_ar_exposure_summary.download_excel_report"
+				+ "?filters=" + encodeURIComponent(JSON.stringify(filters))
+			);
 		});
 	}
 };

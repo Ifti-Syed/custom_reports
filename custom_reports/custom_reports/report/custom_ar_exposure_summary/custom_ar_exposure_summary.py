@@ -1,5 +1,8 @@
 # /home/ifti/frappe-bench/apps/custom_reports/custom_reports/custom_reports/report/custom_ar_exposure_summary/custom_ar_exposure_summary.py
 
+import json
+from io import BytesIO
+
 import frappe
 from frappe import _
 from frappe.utils import flt, getdate, nowdate
@@ -30,6 +33,21 @@ class CustomARExposureSummary(ReceivablePayableReport):
 
         summary_rows = self.build_customer_summary(data)
         columns = self.build_required_columns()
+
+        # Add customers who have active OPRs but no submitted Sales Invoices
+        existing_customers = {r["customer"] for r in summary_rows if r.get("customer")}
+        opr_only = self.get_opr_only_customers(existing_customers)
+        if opr_only:
+            default_currency = frappe.db.get_value("Company", self.filters.company, "default_currency")
+            bucket_count = len(self._get_ageing_labels())
+            for customer in opr_only:
+                summary_rows.append({
+                    "customer": customer,
+                    "currency": default_currency,
+                    "outstanding": 0.0,
+                    **{f"range{i}": 0.0 for i in range(1, bucket_count + 1)},
+                })
+
         self.enrich_customer_rows(summary_rows)
 
         summary_rows.sort(
@@ -188,7 +206,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
     def get_sales_person_map(self, customers):
         if not customers:
             return {}
-        
+
         result = frappe.db.sql(
             """
             SELECT parent, GROUP_CONCAT(sales_person SEPARATOR ', ') as sales_person
@@ -205,7 +223,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
     def get_payment_terms_map(self, customers):
         if not customers:
             return {}
-        
+
         result = frappe.db.sql(
             """
             SELECT name, payment_terms
@@ -220,8 +238,15 @@ class CustomARExposureSummary(ReceivablePayableReport):
     def get_future_payment_map(self, customers):
         if not customers:
             return {}
-        
-        result = frappe.db.sql(
+
+        params = {
+            "customers": customers,
+            "report_date": self.filters.report_date,
+            "company": self.filters.company,
+        }
+
+        # Submitted payment entries (existing logic unchanged)
+        submitted = frappe.db.sql(
             """
             SELECT party, SUM(paid_amount) as future_amount
             FROM `tabPayment Entry`
@@ -233,15 +258,40 @@ class CustomARExposureSummary(ReceivablePayableReport):
               AND company = %(company)s
             GROUP BY party
             """,
-            {"customers": customers, "report_date": self.filters.report_date, "company": self.filters.company},
+            params,
             as_dict=True,
         )
-        return {row.party: row.future_amount for row in result}
+
+        # Draft CDC/PDC entries — only if custom_type column exists on Payment Entry
+        draft_cdc_pdc = []
+        if frappe.db.has_column("Payment Entry", "custom_type"):
+            draft_cdc_pdc = frappe.db.sql(
+                """
+                SELECT party, SUM(paid_amount) as future_amount
+                FROM `tabPayment Entry`
+                WHERE docstatus = 0
+                  AND payment_type = 'Receive'
+                  AND party_type = 'Customer'
+                  AND party IN %(customers)s
+                  AND posting_date > %(report_date)s
+                  AND company = %(company)s
+                  AND custom_type IN ('CDC', 'PDC')
+                GROUP BY party
+                """,
+                params,
+                as_dict=True,
+            )
+
+        future_map = {row.party: flt(row.future_amount, 2) for row in submitted}
+        for row in draft_cdc_pdc:
+            future_map[row.party] = flt(future_map.get(row.party, 0) + flt(row.future_amount, 2), 2)
+
+        return future_map
 
     def get_unbilled_sales_map(self, customers):
         if not customers:
             return {}
-        
+
         result = frappe.db.sql(
             """
             SELECT customer, SUM(grand_total) as unbilled_amount
@@ -258,13 +308,25 @@ class CustomARExposureSummary(ReceivablePayableReport):
         )
         return {row.customer: row.unbilled_amount for row in result}
 
+    def get_company_vat(self):
+        """Returns VAT % from Company.custom_vat_ field, defaulting to 0 if unavailable."""
+        try:
+            vat = frappe.db.get_value("Company", self.filters.company, "custom_vat_")
+            return flt(vat or 0, 4)
+        except Exception:
+            return 0.0
+
     def get_opr_data_map(self, customers):
         if not customers:
             return {}, {}
-        
+
         if not frappe.db.table_exists("Order Processing Request"):
             return {}, {}
-        
+
+        vat_rate = self.get_company_vat()
+        vat_multiplier = 1 + vat_rate / 100
+
+        # OPRs in Production, Unbilled, and other active non-Hold stages (VAT-inclusive)
         prod_result = frappe.db.sql(
             """
             SELECT customer_name, SUM(remaining_value) as production_value
@@ -278,7 +340,8 @@ class CustomARExposureSummary(ReceivablePayableReport):
             {"customers": customers},
             as_dict=True,
         )
-        
+
+        # OPRs in Hold stage (VAT-inclusive)
         hold_result = frappe.db.sql(
             """
             SELECT customer_name, SUM(remaining_value) as hold_value
@@ -292,11 +355,76 @@ class CustomARExposureSummary(ReceivablePayableReport):
             {"customers": customers},
             as_dict=True,
         )
-        
-        production_map = {row.customer_name: row.production_value for row in prod_result}
-        hold_map = {row.customer_name: row.hold_value for row in hold_result}
-        
+
+        production_map = {
+            row.customer_name: flt((row.production_value or 0) * vat_multiplier, 2)
+            for row in prod_result
+        }
+        hold_map = {
+            row.customer_name: flt((row.hold_value or 0) * vat_multiplier, 2)
+            for row in hold_result
+        }
+
         return production_map, hold_map
+
+    def get_opr_only_customers(self, existing_customers):
+        """Returns customers with active OPRs who have no outstanding invoices."""
+        if not frappe.db.table_exists("Order Processing Request"):
+            return []
+
+        conditions = ""
+        params = {}
+
+        if self.filters.get("customer_group"):
+            groups = get_customer_group_with_children(self.filters.customer_group)
+            group_customers = frappe.get_all(
+                "Customer",
+                filters={"customer_group": ["in", groups]},
+                pluck="name",
+            )
+            if not group_customers:
+                return []
+            conditions += " AND customer_name IN %(group_customers)s"
+            params["group_customers"] = group_customers
+
+        if self.filters.get("sales_person"):
+            lft, rgt = frappe.db.get_value(
+                "Sales Person",
+                self.filters.sales_person,
+                ["lft", "rgt"],
+            )
+            sp_customers = frappe.db.sql_list(
+                """
+                SELECT DISTINCT st.parent
+                FROM `tabSales Team` st
+                INNER JOIN `tabSales Person` sp ON sp.name = st.sales_person
+                WHERE st.parenttype = 'Customer'
+                  AND sp.lft >= %s AND sp.rgt <= %s
+                """,
+                (lft, rgt),
+            )
+            if not sp_customers:
+                return []
+            conditions += " AND customer_name IN %(sp_customers)s"
+            params["sp_customers"] = sp_customers
+
+        result = frappe.db.sql(
+            f"""
+            SELECT DISTINCT customer_name
+            FROM `tabOrder Processing Request`
+            WHERE docstatus != 2
+              AND remaining_value > 0
+              {conditions}
+            """,
+            params,
+            as_dict=True,
+        )
+
+        return [
+            row.customer_name
+            for row in result
+            if row.customer_name and row.customer_name not in existing_customers
+        ]
 
 
 def get_customer_group_with_children(customer_group):
@@ -309,3 +437,86 @@ def get_customer_group_with_children(customer_group):
         filters={"lft": [">=", lft], "rgt": ["<=", rgt]},
         pluck="name",
     )
+
+
+@frappe.whitelist()
+def download_excel_report(filters):
+    """Generate a formatted Excel export of the AR Exposure Summary report."""
+    import openpyxl
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    if isinstance(filters, str):
+        filters = frappe._dict(json.loads(filters))
+    elif isinstance(filters, dict):
+        filters = frappe._dict(filters)
+
+    args = {
+        "account_type": "Receivable",
+        "naming_by": ["Selling Settings", "cust_master_name"],
+    }
+    report = CustomARExposureSummary(filters)
+    columns, data, *_ = report.run(args)
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "AR Exposure Summary"
+
+    fieldnames = [col["fieldname"] for col in columns]
+    headers = [col["label"] for col in columns]
+    currency_fields = {col["fieldname"] for col in columns if col.get("fieldtype") == "Currency"}
+    hidden_fields = {col["fieldname"] for col in columns if col.get("hidden")}
+
+    # Filter out hidden columns for export
+    visible_indices = [i for i, col in enumerate(columns) if col["fieldname"] not in hidden_fields]
+    visible_headers = [headers[i] for i in visible_indices]
+    visible_fieldnames = [fieldnames[i] for i in visible_indices]
+
+    header_font = Font(bold=True, size=10)
+    header_fill = PatternFill(start_color="BDD7EE", end_color="BDD7EE", fill_type="solid")
+    header_align = Alignment(wrap_text=True, horizontal="center", vertical="center")
+    right_align = Alignment(horizontal="right", vertical="center")
+    left_align = Alignment(horizontal="left", vertical="center")
+
+    # Write and style header row
+    ws.append(visible_headers)
+    ws.row_dimensions[1].height = 40
+    for col_idx, cell in enumerate(ws[1], 1):
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+
+    # Write data rows
+    for row_data in data:
+        row_values = []
+        for fn in visible_fieldnames:
+            val = row_data.get(fn)
+            if fn in currency_fields and val is not None:
+                row_values.append(flt(val, 2))
+            else:
+                row_values.append(val if val is not None else "")
+        ws.append(row_values)
+
+    # Align data cells and track max column widths
+    col_widths = [len(str(h)) + 2 for h in visible_headers]
+    for row in ws.iter_rows(min_row=2):
+        for col_idx, cell in enumerate(row):
+            fn = visible_fieldnames[col_idx] if col_idx < len(visible_fieldnames) else ""
+            cell.alignment = right_align if fn in currency_fields else left_align
+            if cell.value is not None:
+                col_widths[col_idx] = max(col_widths[col_idx], len(str(cell.value)) + 2)
+
+    # Apply auto-adjusted column widths (capped at 40)
+    for col_idx, width in enumerate(col_widths, 1):
+        ws.column_dimensions[get_column_letter(col_idx)].width = min(width, 40)
+
+    # Freeze panes: lock header row and first 2 columns (Customer, Sales Person)
+    ws.freeze_panes = "C2"
+
+    output = BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    frappe.local.response.filecontent = output.read()
+    frappe.local.response.type = "download"
+    frappe.local.response.filename = "AR_Exposure_Summary.xlsx"
