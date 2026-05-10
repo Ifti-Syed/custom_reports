@@ -245,7 +245,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
             "company": self.filters.company,
         }
 
-        # Submitted payment entries (existing logic unchanged)
+        # FIX-1: changed > to >= so payments dated on the report date are included
         submitted = frappe.db.sql(
             """
             SELECT party, SUM(paid_amount) as future_amount
@@ -254,7 +254,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
               AND payment_type = 'Receive'
               AND party_type = 'Customer'
               AND party IN %(customers)s
-              AND posting_date > %(report_date)s
+              AND posting_date >= %(report_date)s
               AND company = %(company)s
             GROUP BY party
             """,
@@ -263,6 +263,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
         )
 
         # Draft CDC/PDC entries — only if custom_type column exists on Payment Entry
+        # FIX-1: changed > to >= (same-day draft CDC/PDC should also count)
         draft_cdc_pdc = []
         if frappe.db.has_column("Payment Entry", "custom_type"):
             draft_cdc_pdc = frappe.db.sql(
@@ -273,7 +274,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
                   AND payment_type = 'Receive'
                   AND party_type = 'Customer'
                   AND party IN %(customers)s
-                  AND posting_date > %(report_date)s
+                  AND posting_date >= %(report_date)s
                   AND company = %(company)s
                   AND custom_type IN ('CDC', 'PDC')
                 GROUP BY party
@@ -306,7 +307,10 @@ class CustomARExposureSummary(ReceivablePayableReport):
             {"customers": customers, "company": self.filters.company, "report_date": self.filters.report_date},
             as_dict=True,
         )
-        return {row.customer: row.unbilled_amount for row in result}
+        # FIX-3: apply company VAT so unbilled_sales is VAT-inclusive,
+        # consistent with oprs_under_production and oprs_on_hold
+        vat_multiplier = 1 + self.get_company_vat() / 100
+        return {row.customer: flt((row.unbilled_amount or 0) * vat_multiplier, 2) for row in result}
 
     def get_company_vat(self):
         """Returns VAT % from Company.custom_vat_ field, defaulting to 0 if unavailable."""
@@ -326,7 +330,11 @@ class CustomARExposureSummary(ReceivablePayableReport):
         vat_rate = self.get_company_vat()
         vat_multiplier = 1 + vat_rate / 100
 
-        # OPRs in Production, Unbilled, and other active non-Hold stages (VAT-inclusive)
+        opr_params = {"customers": customers, "company": self.filters.company}
+
+        # FIX-2: added company filter to prevent cross-company OPR data leaking in
+        # FIX-4: excluded 'Unbilled' workflow state — those are already captured by
+        #        Delivery Notes (status='To Bill') in get_unbilled_sales_map to avoid double-count
         prod_result = frappe.db.sql(
             """
             SELECT customer_name, SUM(remaining_value) as production_value
@@ -334,14 +342,17 @@ class CustomARExposureSummary(ReceivablePayableReport):
             WHERE docstatus != 2
               AND remaining_value > 0
               AND customer_name IN %(customers)s
-              AND (workflow_state IS NULL OR workflow_state NOT LIKE '%%Hold%%')
+              AND company = %(company)s
+              AND (workflow_state IS NULL
+                   OR (workflow_state NOT LIKE '%%Hold%%'
+                       AND workflow_state NOT LIKE '%%Unbilled%%'))
             GROUP BY customer_name
             """,
-            {"customers": customers},
+            opr_params,
             as_dict=True,
         )
 
-        # OPRs in Hold stage (VAT-inclusive)
+        # FIX-2: added company filter
         hold_result = frappe.db.sql(
             """
             SELECT customer_name, SUM(remaining_value) as hold_value
@@ -349,10 +360,11 @@ class CustomARExposureSummary(ReceivablePayableReport):
             WHERE docstatus != 2
               AND remaining_value > 0
               AND customer_name IN %(customers)s
+              AND company = %(company)s
               AND workflow_state LIKE '%%Hold%%'
             GROUP BY customer_name
             """,
-            {"customers": customers},
+            opr_params,
             as_dict=True,
         )
 
@@ -372,8 +384,9 @@ class CustomARExposureSummary(ReceivablePayableReport):
         if not frappe.db.table_exists("Order Processing Request"):
             return []
 
-        conditions = ""
-        params = {}
+        # FIX-2: always filter by company so OPR-only customer list is company-scoped
+        conditions = " AND company = %(company)s"
+        params = {"company": self.filters.company}
 
         if self.filters.get("customer_group"):
             groups = get_customer_group_with_children(self.filters.customer_group)
