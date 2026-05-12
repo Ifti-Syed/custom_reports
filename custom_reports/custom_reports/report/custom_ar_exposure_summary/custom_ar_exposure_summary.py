@@ -331,18 +331,17 @@ class CustomARExposureSummary(ReceivablePayableReport):
         vat_multiplier = 1 + vat_rate / 100
 
         opr_params = {"customers": customers, "company": self.filters.company}
+        opr_has_company = frappe.db.has_column("Order Processing Request", "company")
+        company_condition = "AND company = %(company)s" if opr_has_company else ""
 
-        # FIX-2: added company filter to prevent cross-company OPR data leaking in
-        # FIX-4: excluded 'Unbilled' workflow state — those are already captured by
-        #        Delivery Notes (status='To Bill') in get_unbilled_sales_map to avoid double-count
         prod_result = frappe.db.sql(
-            """
+            f"""
             SELECT customer_name, SUM(remaining_value) as production_value
             FROM `tabOrder Processing Request`
             WHERE docstatus != 2
               AND remaining_value > 0
               AND customer_name IN %(customers)s
-              AND company = %(company)s
+              {company_condition}
               AND (workflow_state IS NULL
                    OR (workflow_state NOT LIKE '%%Hold%%'
                        AND workflow_state NOT LIKE '%%Unbilled%%'))
@@ -352,15 +351,14 @@ class CustomARExposureSummary(ReceivablePayableReport):
             as_dict=True,
         )
 
-        # FIX-2: added company filter
         hold_result = frappe.db.sql(
-            """
+            f"""
             SELECT customer_name, SUM(remaining_value) as hold_value
             FROM `tabOrder Processing Request`
             WHERE docstatus != 2
               AND remaining_value > 0
               AND customer_name IN %(customers)s
-              AND company = %(company)s
+              {company_condition}
               AND workflow_state LIKE '%%Hold%%'
             GROUP BY customer_name
             """,
@@ -384,8 +382,8 @@ class CustomARExposureSummary(ReceivablePayableReport):
         if not frappe.db.table_exists("Order Processing Request"):
             return []
 
-        # FIX-2: always filter by company so OPR-only customer list is company-scoped
-        conditions = " AND company = %(company)s"
+        opr_has_company = frappe.db.has_column("Order Processing Request", "company")
+        conditions = " AND company = %(company)s" if opr_has_company else ""
         params = {"company": self.filters.company}
 
         if self.filters.get("customer_group"):
