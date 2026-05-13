@@ -1,6 +1,6 @@
 // /home/ifti/frappe-bench/apps/custom_reports/custom_reports/custom_reports/report/custom_ar_exposure_summary/custom_ar_exposure_summary.js
 
-console.log("🔥 Custom AR Exposure Summary JS LOADED 🔥 FINAL ");
+console.log("🔥 Custom AR Exposure Summary JS LOADED 🔥 FINAL 1 ");
 
 frappe.query_reports["Custom AR Exposure Summary"] = {
 	filters: [
