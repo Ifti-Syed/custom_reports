@@ -331,7 +331,9 @@ class CustomARExposureSummary(ReceivablePayableReport):
         vat_multiplier = 1 + vat_rate / 100
 
         opr_params = {"customers": customers, "company": self.filters.company}
-        opr_has_company = frappe.db.has_column("Order Processing Request", "company")
+        opr_has_company = bool(
+            frappe.db.sql("SHOW COLUMNS FROM `tabOrder Processing Request` LIKE 'company'")
+        )
         company_condition = "AND company = %(company)s" if opr_has_company else ""
 
         prod_result = frappe.db.sql(
@@ -382,7 +384,9 @@ class CustomARExposureSummary(ReceivablePayableReport):
         if not frappe.db.table_exists("Order Processing Request"):
             return []
 
-        opr_has_company = frappe.db.has_column("Order Processing Request", "company")
+        opr_has_company = bool(
+            frappe.db.sql("SHOW COLUMNS FROM `tabOrder Processing Request` LIKE 'company'")
+        )
         conditions = " AND company = %(company)s" if opr_has_company else ""
         params = {"company": self.filters.company}
 
