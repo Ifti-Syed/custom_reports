@@ -307,10 +307,11 @@ class CustomARExposureSummary(ReceivablePayableReport):
             {"customers": customers, "company": self.filters.company, "report_date": self.filters.report_date},
             as_dict=True,
         )
-        # FIX-3: apply company VAT so unbilled_sales is VAT-inclusive,
+        # grand_total already includes VAT,
         # consistent with oprs_under_production and oprs_on_hold
-        vat_multiplier = 1 + self.get_company_vat() / 100
-        return {row.customer: flt((row.unbilled_amount or 0) * vat_multiplier, 2) for row in result}
+        return {row.customer: flt(row.unbilled_amount or 0, 2)
+        for row in result
+    }
 
     def get_company_vat(self):
         """Returns VAT % from Company.custom_vat_ field, defaulting to 0 if unavailable."""
