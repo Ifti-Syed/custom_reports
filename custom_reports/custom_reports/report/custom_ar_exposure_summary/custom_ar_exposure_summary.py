@@ -207,9 +207,11 @@ class CustomARExposureSummary(ReceivablePayableReport):
         if not customers:
             return {}
 
+        # Primary: sales person assigned directly to the Customer record
         result = frappe.db.sql(
             """
-            SELECT parent, GROUP_CONCAT(sales_person SEPARATOR ', ') as sales_person
+            SELECT parent,
+                   GROUP_CONCAT(DISTINCT sales_person ORDER BY sales_person SEPARATOR ', ') AS sales_person
             FROM `tabSales Team`
             WHERE parenttype = 'Customer'
               AND parent IN %(customers)s
@@ -218,7 +220,29 @@ class CustomARExposureSummary(ReceivablePayableReport):
             {"customers": customers},
             as_dict=True,
         )
-        return {row.parent: row.sales_person for row in result}
+        sp_map = {row.parent: row.sales_person for row in result}
+
+        # Fallback: sales person from submitted Sales Invoices (standard AR report's source)
+        missing = [c for c in customers if c not in sp_map]
+        if missing:
+            invoice_result = frappe.db.sql(
+                """
+                SELECT si.customer,
+                       GROUP_CONCAT(DISTINCT st.sales_person ORDER BY st.sales_person SEPARATOR ', ') AS sales_person
+                FROM `tabSales Team` st
+                INNER JOIN `tabSales Invoice` si ON si.name = st.parent
+                WHERE st.parenttype = 'Sales Invoice'
+                  AND si.docstatus = 1
+                  AND si.customer IN %(customers)s
+                GROUP BY si.customer
+                """,
+                {"customers": missing},
+                as_dict=True,
+            )
+            for row in invoice_result:
+                sp_map[row.customer] = row.sales_person
+
+        return sp_map
 
     def get_payment_terms_map(self, customers):
         if not customers:
@@ -245,46 +269,49 @@ class CustomARExposureSummary(ReceivablePayableReport):
             "company": self.filters.company,
         }
 
-        # FIX-1: changed > to >= so payments dated on the report date are included
-        submitted = frappe.db.sql(
+        # Payment Entries with future posting dates, using allocated_amount per reference
+        # (matches standard AR report: docstatus < 2, posting_date > report_date)
+        pe_rows = frappe.db.sql(
             """
-            SELECT party, SUM(paid_amount) as future_amount
-            FROM `tabPayment Entry`
-            WHERE docstatus = 1
-              AND payment_type = 'Receive'
-              AND party_type = 'Customer'
-              AND party IN %(customers)s
-              AND posting_date >= %(report_date)s
-              AND company = %(company)s
-            GROUP BY party
+            SELECT pe.party, SUM(per.allocated_amount) AS future_amount
+            FROM `tabPayment Entry` pe
+            INNER JOIN `tabPayment Entry Reference` per ON per.parent = pe.name
+            WHERE pe.docstatus < 2
+              AND pe.payment_type = 'Receive'
+              AND pe.party_type = 'Customer'
+              AND pe.party IN %(customers)s
+              AND pe.posting_date > %(report_date)s
+              AND pe.company = %(company)s
+              AND per.allocated_amount > 0
+            GROUP BY pe.party
             """,
             params,
             as_dict=True,
         )
 
-        # Draft CDC/PDC entries — only if custom_type column exists on Payment Entry
-        # FIX-1: changed > to >= (same-day draft CDC/PDC should also count)
-        draft_cdc_pdc = []
-        if frappe.db.has_column("Payment Entry", "custom_type"):
-            draft_cdc_pdc = frappe.db.sql(
-                """
-                SELECT party, SUM(paid_amount) as future_amount
-                FROM `tabPayment Entry`
-                WHERE docstatus = 0
-                  AND payment_type = 'Receive'
-                  AND party_type = 'Customer'
-                  AND party IN %(customers)s
-                  AND posting_date >= %(report_date)s
-                  AND company = %(company)s
-                  AND custom_type IN ('CDC', 'PDC')
-                GROUP BY party
-                """,
-                params,
-                as_dict=True,
-            )
+        # Journal Entries with future posting dates linked to invoices
+        # (matches standard AR report's get_future_payments_from_journal_entry)
+        je_rows = frappe.db.sql(
+            """
+            SELECT jea.party, SUM(jea.credit_in_account_currency) AS future_amount
+            FROM `tabJournal Entry Account` jea
+            INNER JOIN `tabJournal Entry` je ON je.name = jea.parent
+            WHERE je.docstatus < 2
+              AND je.posting_date > %(report_date)s
+              AND je.company = %(company)s
+              AND jea.party_type = 'Customer'
+              AND jea.party IN %(customers)s
+              AND jea.reference_name IS NOT NULL
+              AND jea.reference_name != ''
+              AND jea.credit_in_account_currency > 0
+            GROUP BY jea.party
+            """,
+            params,
+            as_dict=True,
+        )
 
-        future_map = {row.party: flt(row.future_amount, 2) for row in submitted}
-        for row in draft_cdc_pdc:
+        future_map = {row.party: flt(row.future_amount, 2) for row in pe_rows}
+        for row in je_rows:
             future_map[row.party] = flt(future_map.get(row.party, 0) + flt(row.future_amount, 2), 2)
 
         return future_map
