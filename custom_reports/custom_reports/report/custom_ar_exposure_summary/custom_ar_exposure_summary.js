@@ -1,6 +1,6 @@
 // /home/ifti/frappe-bench/apps/custom_reports/custom_reports/custom_reports/report/custom_ar_exposure_summary/custom_ar_exposure_summary.js
 
-console.log("🔥 Custom AR Exposure Summary JS LOADED 🔥 1 ");
+console.log("🔥 Custom AR Exposure Summary JS LOADED 🔥 0 ");
 
 frappe.query_reports["Custom AR Exposure Summary"] = {
 	filters: [
@@ -46,15 +46,13 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		}
 	],
 
-	// Freeze first 3 columns: Customer, Customer Group, Sales Person
-	freeze_columns: 3,
-
 	get_datatable_options(options) {
 		return Object.assign(options, {
-			layout: "fixed",        // required for freeze
-			checkboxColumn: true,   // show row checkbox
+			layout: "fixed",
+			checkboxColumn: true,
 			showTotalRow: true,
-			cellHeight: 34
+			cellHeight: 34,
+			freezeColumns: 3,
 		});
 	},
 
