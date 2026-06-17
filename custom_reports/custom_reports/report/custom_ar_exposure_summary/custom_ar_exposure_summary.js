@@ -27,6 +27,12 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 			description: __("Comma separated ageing ranges in days (e.g., 30, 60, 90, 120)")
 		},
 		{
+			fieldname: "customer",
+			label: __("Customer"),
+			fieldtype: "Link",
+			options: "Customer"
+		},
+		{
 			fieldname: "customer_group",
 			label: __("Customer Group"),
 			fieldtype: "Link",
@@ -40,8 +46,8 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		}
 	],
 
-	// Freeze first 2 columns: Customer and Sales Person
-	freeze_columns: 2,
+	// Freeze first 3 columns: Customer, Customer Group, Sales Person
+	freeze_columns: 3,
 
 	get_datatable_options(options) {
 		return Object.assign(options, {

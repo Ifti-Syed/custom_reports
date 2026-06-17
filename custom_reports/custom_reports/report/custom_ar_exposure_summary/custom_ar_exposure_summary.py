@@ -94,6 +94,9 @@ class CustomARExposureSummary(ReceivablePayableReport):
             else:
                 self.qb_selection_filter.append(self.ple.party == "__NO_CUSTOMERS__")
 
+        if self.filters.get("customer"):
+            self.qb_selection_filter.append(self.ple.party == self.filters.customer)
+
     def build_required_columns(self):
         cols = [
             {
@@ -104,17 +107,17 @@ class CustomARExposureSummary(ReceivablePayableReport):
                 "width": 200,
             },
             {
+                "label": _("Customer Group"),
+                "fieldname": "customer_group",
+                "fieldtype": "Link",
+                "options": "Customer Group",
+                "width": 160,
+            },
+            {
                 "label": _("Sales Person"),
                 "fieldname": "sales_person",
                 "fieldtype": "Data",
                 "width": 170,
-            },
-            {
-                "label": _("Payment Terms"),
-                "fieldname": "payment_terms",
-                "fieldtype": "Link",
-                "options": "Payment Terms Template",
-                "width": 190,
             },
         ]
 
@@ -167,6 +170,13 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "width": 200,
                 },
                 {
+                    "label": _("Total Exposure After Hold"),
+                    "fieldname": "total_exposure_after_hold",
+                    "fieldtype": "Currency",
+                    "options": "currency",
+                    "width": 230,
+                },
+                {
                     "label": _("OPRs On Hold"),
                     "fieldname": "oprs_on_hold",
                     "fieldtype": "Currency",
@@ -181,11 +191,11 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "width": 180,
                 },
                 {
-                    "label": _("Total Exposure After Hold"),
-                    "fieldname": "total_exposure_after_hold",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 230,
+                    "label": _("Payment Terms"),
+                    "fieldname": "payment_terms",
+                    "fieldtype": "Link",
+                    "options": "Payment Terms Template",
+                    "width": 190,
                 },
                 {
                     "label": _("Currency"),
@@ -248,6 +258,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
         customers = [r["customer"] for r in rows if r.get("customer")]
 
         sales_person_map = self.get_sales_person_map(customers)
+        customer_group_map = self.get_customer_group_map(customers)
         payment_terms_map = self.get_payment_terms_map(customers)
         future_payment_map = self.get_future_payment_map(customers)
         unbilled_map = self.get_unbilled_sales_map(customers)
@@ -259,6 +270,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
                 continue
 
             r["sales_person"] = sales_person_map.get(customer, "")
+            r["customer_group"] = customer_group_map.get(customer, "")
             r["payment_terms"] = payment_terms_map.get(customer, "")
 
             outstanding = flt(r.get("outstanding", 0), 2)
@@ -295,6 +307,21 @@ class CustomARExposureSummary(ReceivablePayableReport):
         )
 
         return {row.name: row.sales_person or "" for row in result}
+
+    def get_customer_group_map(self, customers):
+        if not customers:
+            return {}
+
+        result = frappe.db.sql(
+            """
+            SELECT name, customer_group
+            FROM `tabCustomer`
+            WHERE name IN %(customers)s
+            """,
+            {"customers": customers},
+            as_dict=True,
+        )
+        return {row.name: row.customer_group or "" for row in result}
 
     def get_payment_terms_map(self, customers):
         if not customers:
@@ -430,9 +457,8 @@ class CustomARExposureSummary(ReceivablePayableReport):
               AND remaining_value > 0
               AND customer_name IN %(customers)s
               {company_condition}
-              AND (workflow_state IS NULL
-                   OR (workflow_state NOT LIKE '%%Hold%%'
-                       AND workflow_state NOT LIKE '%%Unbilled%%'))
+              AND workflow_state LIKE '%%Production%%'
+              AND workflow_state NOT LIKE '%%Hold%%'
             GROUP BY customer_name
             """,
             opr_params,
@@ -448,6 +474,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
               AND customer_name IN %(customers)s
               {company_condition}
               AND workflow_state LIKE '%%Hold%%'
+              AND workflow_state NOT LIKE '%%Complet%%'
             GROUP BY customer_name
             """,
             opr_params,
@@ -505,6 +532,10 @@ class CustomARExposureSummary(ReceivablePayableReport):
 
             conditions += " AND customer_name IN %(sp_customers)s"
             params["sp_customers"] = sp_customers
+
+        if self.filters.get("customer"):
+            conditions += " AND customer_name = %(customer)s"
+            params["customer"] = self.filters.customer
 
         result = frappe.db.sql(
             f"""
