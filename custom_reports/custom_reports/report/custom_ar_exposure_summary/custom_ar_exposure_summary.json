@@ -33,5 +33,6 @@
    "role": "Sales User"
   }
  ],
- "timeout": 300
+ "timeout": 300,
+ "freeze_columns": 3
 }
