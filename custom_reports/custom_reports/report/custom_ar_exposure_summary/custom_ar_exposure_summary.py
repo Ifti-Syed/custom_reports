@@ -647,8 +647,8 @@ def download_excel_report(filters):
     for col_idx, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = min(width, 40)
 
-    # Freeze panes: lock header row and first 2 columns (Customer, Sales Person)
-    ws.freeze_panes = "C2"
+    # Freeze panes: lock header row and first 3 columns (Customer, Customer Group, Sales Person)
+    ws.freeze_panes = "D2"
 
     output = BytesIO()
     wb.save(output)

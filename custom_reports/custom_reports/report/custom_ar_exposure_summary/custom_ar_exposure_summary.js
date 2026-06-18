@@ -1,6 +1,6 @@
 // /home/ifti/frappe-bench/apps/custom_reports/custom_reports/custom_reports/report/custom_ar_exposure_summary/custom_ar_exposure_summary.js
 
-console.log("🔥 Custom AR Exposure Summary JS LOADED 🔥 1 ");
+console.log("🔥 Custom AR Exposure Summary JS LOADED 🔥 0 ");
 
 frappe.query_reports["Custom AR Exposure Summary"] = {
 	filters: [
@@ -49,11 +49,21 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 	freeze_columns: 3,
 
 	get_datatable_options(options) {
-		options.freezeColumns = 4;
+		options.freezeColumns = 3;
 		options.layout = "fixed";
+		options.checkboxColumn = true;
 		options.showTotalRow = true;
 		options.cellHeight = 34;
 		return options;
+	},
+
+	after_datatable_render(datatable) {
+		if (!datatable) return;
+		datatable.options.freezeColumns = 3;
+		datatable.refresh(
+			datatable.datamanager.data,
+			datatable.columnmanager.columns
+		);
 	},
 
 	formatter(value, row, column, data, default_formatter) {
