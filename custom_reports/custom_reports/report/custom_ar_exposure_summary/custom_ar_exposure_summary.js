@@ -47,6 +47,7 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 	],
 
 	get_datatable_options(options) {
+		options.checkboxColumn = true;
 		return options;
 	},
 
@@ -60,10 +61,10 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		if (!bodyScrollable || !header) return;
 
 		// serialNoColumn=true (default) → col 0
-		// checkboxColumn=false (default) → no checkbox col
-		// User columns: Customer=1, CustomerGroup=2, SalesPerson=3
-		// Freeze cols 0-3 (serial + 3 data cols)
-		const frozenIndices = [0, 1, 2, 3];
+		// checkboxColumn=true → col 1
+		// User columns: Customer=2, CustomerGroup=3, SalesPerson=4
+		// Freeze cols 0-4 (serial + checkbox + 3 data cols)
+		const frozenIndices = [0, 1, 2, 3, 4];
 
 		// Calculate cumulative left offsets from actual header cell widths
 		const offsets = {};
