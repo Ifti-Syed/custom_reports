@@ -46,14 +46,15 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		}
 	],
 
+	freeze_columns: 3,
+
 	get_datatable_options(options) {
-		return Object.assign(options, {
-			layout: "fixed",
-			checkboxColumn: true,
-			showTotalRow: true,
-			cellHeight: 34,
-			freezeColumns: 3,
-		});
+		options.freezeColumns = 3;
+		options.layout = "fixed";
+		options.checkboxColumn = true;
+		options.showTotalRow = true;
+		options.cellHeight = 34;
+		return options;
 	},
 
 	formatter(value, row, column, data, default_formatter) {
