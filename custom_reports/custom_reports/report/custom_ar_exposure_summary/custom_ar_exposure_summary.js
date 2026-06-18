@@ -46,24 +46,57 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		}
 	],
 
-	freeze_columns: 3,
-
 	get_datatable_options(options) {
-		options.freezeColumns = 3;
-		options.layout = "fixed";
-		options.checkboxColumn = true;
-		options.showTotalRow = true;
-		options.cellHeight = 34;
 		return options;
 	},
 
 	after_datatable_render(datatable) {
-		if (!datatable) return;
-		datatable.options.freezeColumns = 3;
-		datatable.refresh(
-			datatable.datamanager.data,
-			datatable.columnmanager.columns
-		);
+		if (!datatable || datatable._freeze_applied) return;
+		datatable._freeze_applied = true;
+
+		const wrapper = datatable.wrapper;
+		const bodyScrollable = datatable.bodyScrollable || wrapper.querySelector('.dt-scrollable');
+		const header = datatable.header || wrapper.querySelector('.dt-header');
+		if (!bodyScrollable || !header) return;
+
+		// serialNoColumn=true (default) → col 0
+		// checkboxColumn=false (default) → no checkbox col
+		// User columns: Customer=1, CustomerGroup=2, SalesPerson=3
+		// Freeze cols 0-3 (serial + 3 data cols)
+		const frozenIndices = [0, 1, 2, 3];
+
+		// Calculate cumulative left offsets from actual header cell widths
+		const offsets = {};
+		let cumLeft = 0;
+		frozenIndices.forEach(i => {
+			offsets[i] = cumLeft;
+			const cell = header.querySelector(`.dt-cell--col-${i}`);
+			cumLeft += cell ? cell.offsetWidth : 0;
+		});
+
+		// Inject CSS to make body cells sticky within the scrollable container
+		const styleId = 'dt-ar-freeze-style';
+		const existing = document.getElementById(styleId);
+		if (existing) existing.remove();
+		const style = document.createElement('style');
+		style.id = styleId;
+		style.textContent = frozenIndices.map(i =>
+			`.dt-cell--col-${i} { position: sticky !important; left: ${offsets[i]}px !important; z-index: 2 !important; background: #fff !important; }`
+		).join('\n');
+		document.head.appendChild(style);
+
+		// Counter-scroll frozen header cells: the header moves via translateX(-scrollLeft),
+		// so we apply translateX(+scrollLeft) on frozen header cells to keep them in place.
+		bodyScrollable.addEventListener('scroll', function () {
+			const scrollLeft = this.scrollLeft;
+			frozenIndices.forEach(i => {
+				header.querySelectorAll(`.dt-cell--col-${i}`).forEach(cell => {
+					cell.style.transform = `translateX(${scrollLeft}px)`;
+					cell.style.zIndex = '3';
+					cell.style.position = 'relative';
+				});
+			});
+		});
 	},
 
 	formatter(value, row, column, data, default_formatter) {
