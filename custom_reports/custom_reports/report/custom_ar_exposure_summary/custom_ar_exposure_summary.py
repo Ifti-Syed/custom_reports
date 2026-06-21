@@ -158,7 +158,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "fieldname": "unbilled_sales",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 130,
+                    "width": 120,
                 },
                 {
                     "label": _("Cheques Required"),
@@ -172,11 +172,11 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "fieldname": "production_oprs",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 150,
+                    "width": 140,
                 },
                 {
-                    "label": _("Exposure"),
-                    "fieldname": "exposure",
+                    "label": _("Total Exposure"),
+                    "fieldname": "total_exposure",
                     "fieldtype": "Currency",
                     "options": "currency",
                     "width": 140,
@@ -186,30 +186,22 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "fieldname": "hold_oprs",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 130,
+                    "width": 110,
                 },
                 {
                     "label": _("Exposure after Hold OPRs"),
                     "fieldname": "exposure_after_hold_oprs",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 180,
-                },
-                {
-                    "label": _("Total Exposure"),
-                    "fieldname": "total_exposure",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 150,
+                    "width": 190,
                 },
                 {
                     "label": _("Payment Terms"),
                     "fieldname": "payment_terms",
                     "fieldtype": "Link",
                     "options": "Payment Terms Template",
-                    "width": 170,
+                    "width": 160,
                 },
-                # Customer Group moved to end (after Payment Terms) per review
                 {
                     "label": _("Customer Group"),
                     "fieldname": "customer_group",
@@ -307,15 +299,12 @@ class CustomARExposureSummary(ReceivablePayableReport):
             cheques_required = flt(max(outstanding - future_payment, 0), 2)
             r["cheques_required"] = cheques_required
 
-            # Exposure = Cheques Required − Production OPRs
-            exposure = flt(cheques_required - opr_under_prod, 2)
-            r["exposure"] = exposure
-
-            # Exposure after Hold OPRs = Exposure − Hold OPRs
-            r["exposure_after_hold_oprs"] = flt(exposure - opr_on_hold, 2)
-
             # Total Exposure = Cheques Required + Unbilled Sales + Production OPRs
-            r["total_exposure"] = flt(cheques_required + unbilled_sales + opr_under_prod, 2)
+            total_exposure = flt(cheques_required + unbilled_sales + opr_under_prod, 2)
+            r["total_exposure"] = total_exposure
+
+            # Exposure after Hold OPRs = Total Exposure − Hold OPRs
+            r["exposure_after_hold_oprs"] = flt(total_exposure - opr_on_hold, 2)
 
     def get_sales_person_map(self, customers):
         if not customers:

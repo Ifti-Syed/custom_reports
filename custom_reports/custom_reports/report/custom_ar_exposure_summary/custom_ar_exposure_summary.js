@@ -123,25 +123,16 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		value = default_formatter(value, row, column, data);
 		if (!data) return value;
 
-		// Bold required columns
+		// Bold key columns
 		const bold_fields = [
 			"outstanding",
 			"cheques_required",
-			"exposure",
-			"exposure_after_hold_oprs",
-			"total_exposure"
+			"total_exposure",
+			"exposure_after_hold_oprs"
 		];
 
 		if (bold_fields.includes(column.fieldname)) {
 			value = `<b>${value}</b>`;
-		}
-
-		// Red for negative currency values
-		if (column.fieldtype === "Currency") {
-			const n = parseFloat(data[column.fieldname]);
-			if (!isNaN(n) && n < 0) {
-				value = `<span style="color:red;">${value}</span>`;
-			}
 		}
 
 		return value;
