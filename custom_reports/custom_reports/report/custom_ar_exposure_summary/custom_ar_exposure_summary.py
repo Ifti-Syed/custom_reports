@@ -60,8 +60,20 @@ class CustomARExposureSummary(ReceivablePayableReport):
 
         self.enrich_customer_rows(summary_rows)
 
+        # Exclude rows where Outstanding, Future Payment, Production OPRs,
+        # and Hold OPRs are all zero — these are inactive customers
+        summary_rows = [
+            r for r in summary_rows
+            if not (
+                flt(r.get("outstanding", 0), 2) == 0
+                and flt(r.get("future_payment", 0), 2) == 0
+                and flt(r.get("production_oprs", 0), 2) == 0
+                and flt(r.get("hold_oprs", 0), 2) == 0
+            )
+        ]
+
         summary_rows.sort(
-            key=lambda r: flt(r.get("total_exposure_after_hold", 0), 2),
+            key=lambda r: flt(r.get("exposure_after_hold_oprs", 0), 2),
             reverse=True,
         )
 
@@ -107,17 +119,10 @@ class CustomARExposureSummary(ReceivablePayableReport):
                 "width": 200,
             },
             {
-                "label": _("Customer Group"),
-                "fieldname": "customer_group",
-                "fieldtype": "Link",
-                "options": "Customer Group",
-                "width": 160,
-            },
-            {
                 "label": _("Sales Person"),
                 "fieldname": "sales_person",
                 "fieldtype": "Data",
-                "width": 170,
+                "width": 160,
             },
         ]
 
@@ -128,7 +133,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "fieldname": f"range{i}",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 140,
+                    "width": 120,
                 }
             )
 
@@ -139,63 +144,78 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "fieldname": "outstanding",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 170,
+                    "width": 150,
                 },
                 {
                     "label": _("Future Payment"),
                     "fieldname": "future_payment",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 170,
+                    "width": 130,
                 },
                 {
                     "label": _("Unbilled Sales"),
                     "fieldname": "unbilled_sales",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 170,
+                    "width": 130,
                 },
                 {
                     "label": _("Cheques Required"),
                     "fieldname": "cheques_required",
                     "fieldtype": "Currency",
                     "options": "currency",
+                    "width": 150,
+                },
+                {
+                    "label": _("Production OPRs"),
+                    "fieldname": "production_oprs",
+                    "fieldtype": "Currency",
+                    "options": "currency",
+                    "width": 150,
+                },
+                {
+                    "label": _("Exposure"),
+                    "fieldname": "exposure",
+                    "fieldtype": "Currency",
+                    "options": "currency",
+                    "width": 140,
+                },
+                {
+                    "label": _("Hold OPRs"),
+                    "fieldname": "hold_oprs",
+                    "fieldtype": "Currency",
+                    "options": "currency",
+                    "width": 130,
+                },
+                {
+                    "label": _("Exposure after Hold OPRs"),
+                    "fieldname": "exposure_after_hold_oprs",
+                    "fieldtype": "Currency",
+                    "options": "currency",
                     "width": 180,
-                },
-                {
-                    "label": _("OPRs Under Production"),
-                    "fieldname": "oprs_under_production",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 200,
-                },
-                {
-                    "label": _("Total Exposure After Hold"),
-                    "fieldname": "total_exposure_after_hold",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 230,
-                },
-                {
-                    "label": _("OPRs On Hold"),
-                    "fieldname": "oprs_on_hold",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 170,
                 },
                 {
                     "label": _("Total Exposure"),
                     "fieldname": "total_exposure",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 180,
+                    "width": 150,
                 },
                 {
                     "label": _("Payment Terms"),
                     "fieldname": "payment_terms",
                     "fieldtype": "Link",
                     "options": "Payment Terms Template",
-                    "width": 190,
+                    "width": 170,
+                },
+                # Customer Group moved to end (after Payment Terms) per review
+                {
+                    "label": _("Customer Group"),
+                    "fieldname": "customer_group",
+                    "fieldtype": "Link",
+                    "options": "Customer Group",
+                    "width": 140,
                 },
                 {
                     "label": _("Currency"),
@@ -281,16 +301,21 @@ class CustomARExposureSummary(ReceivablePayableReport):
 
             r["future_payment"] = future_payment
             r["unbilled_sales"] = unbilled_sales
-            r["oprs_under_production"] = opr_under_prod
-            r["oprs_on_hold"] = opr_on_hold
+            r["production_oprs"] = opr_under_prod
+            r["hold_oprs"] = opr_on_hold
 
-            cheques_required = max(outstanding - future_payment, 0)
-            r["cheques_required"] = flt(cheques_required, 2)
+            cheques_required = flt(max(outstanding - future_payment, 0), 2)
+            r["cheques_required"] = cheques_required
 
-            total_exposure = cheques_required + unbilled_sales + opr_under_prod
-            r["total_exposure"] = flt(total_exposure, 2)
+            # Exposure = Cheques Required − Production OPRs
+            exposure = flt(cheques_required - opr_under_prod, 2)
+            r["exposure"] = exposure
 
-            r["total_exposure_after_hold"] = flt(total_exposure + opr_on_hold, 2)
+            # Exposure after Hold OPRs = Exposure − Hold OPRs
+            r["exposure_after_hold_oprs"] = flt(exposure - opr_on_hold, 2)
+
+            # Total Exposure = Cheques Required + Unbilled Sales + Production OPRs
+            r["total_exposure"] = flt(cheques_required + unbilled_sales + opr_under_prod, 2)
 
     def get_sales_person_map(self, customers):
         if not customers:
@@ -647,8 +672,9 @@ def download_excel_report(filters):
     for col_idx, width in enumerate(col_widths, 1):
         ws.column_dimensions[get_column_letter(col_idx)].width = min(width, 40)
 
-    # Freeze panes: lock header row and first 3 columns (Customer, Customer Group, Sales Person)
-    ws.freeze_panes = "D2"
+    # Freeze panes: lock header row and first 2 columns (Customer, Sales Person)
+    # Customer Group is now the last visible column, so only 2 data cols frozen
+    ws.freeze_panes = "C2"
 
     output = BytesIO()
     wb.save(output)

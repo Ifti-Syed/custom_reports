@@ -86,6 +86,25 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		).join('\n');
 		document.head.appendChild(style);
 
+		// Enable header text wrapping for long column names
+		const wrapStyleId = 'dt-header-wrap-style';
+		if (!document.getElementById(wrapStyleId)) {
+			const wrapStyle = document.createElement('style');
+			wrapStyle.id = wrapStyleId;
+			wrapStyle.textContent = `
+				.dt-header .dt-cell__content {
+					white-space: normal !important;
+					word-break: break-word !important;
+					line-height: 1.3 !important;
+					height: auto !important;
+					padding-top: 4px !important;
+					padding-bottom: 4px !important;
+				}
+				.dt-header .dt-row { height: auto !important; min-height: 34px; }
+			`;
+			document.head.appendChild(wrapStyle);
+		}
+
 		// Counter-scroll frozen header cells: the header moves via translateX(-scrollLeft),
 		// so we apply translateX(+scrollLeft) on frozen header cells to keep them in place.
 		bodyScrollable.addEventListener('scroll', function () {
@@ -108,8 +127,9 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		const bold_fields = [
 			"outstanding",
 			"cheques_required",
-			"total_exposure",
-			"total_exposure_after_hold"
+			"exposure",
+			"exposure_after_hold_oprs",
+			"total_exposure"
 		];
 
 		if (bold_fields.includes(column.fieldname)) {
@@ -168,15 +188,19 @@ function show_exposure_summary(report) {
 				<tr><td><b>${__("Future Payment")}</b></td><td class="text-right">${fmt(sum("future_payment"))}</td></tr>
 				<tr><td><b>${__("Unbilled Sales")}</b></td><td class="text-right">${fmt(sum("unbilled_sales"))}</td></tr>
 				<tr><td><b>${__("Cheques Required")}</b></td><td class="text-right">${fmt(sum("cheques_required"))}</td></tr>
-				<tr><td><b>${__("OPRs Under Production")}</b></td><td class="text-right">${fmt(sum("oprs_under_production"))}</td></tr>
-				<tr><td><b>${__("OPRs On Hold")}</b></td><td class="text-right">${fmt(sum("oprs_on_hold"))}</td></tr>
+				<tr><td><b>${__("Production OPRs")}</b></td><td class="text-right">${fmt(sum("production_oprs"))}</td></tr>
+				<tr class="bg-light font-weight-bold">
+					<td>${__("Exposure")}</td>
+					<td class="text-right">${fmt(sum("exposure"))}</td>
+				</tr>
+				<tr><td><b>${__("Hold OPRs")}</b></td><td class="text-right">${fmt(sum("hold_oprs"))}</td></tr>
+				<tr class="bg-info font-weight-bold">
+					<td>${__("Exposure after Hold OPRs")}</td>
+					<td class="text-right">${fmt(sum("exposure_after_hold_oprs"))}</td>
+				</tr>
 				<tr class="bg-light font-weight-bold">
 					<td>${__("Total Exposure")}</td>
 					<td class="text-right">${fmt(sum("total_exposure"))}</td>
-				</tr>
-				<tr class="bg-info font-weight-bold">
-					<td>${__("Total Exposure After Hold")}</td>
-					<td class="text-right">${fmt(sum("total_exposure_after_hold"))}</td>
 				</tr>
 			</table>
 		`
