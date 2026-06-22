@@ -110,19 +110,25 @@ class CustomARExposureSummary(ReceivablePayableReport):
             self.qb_selection_filter.append(self.ple.party == self.filters.customer)
 
     def build_required_columns(self):
+        # Dynamic width: 8px per character + 24px padding, floored at 130 for
+        # currency columns (to fit formatted numbers) and 100 for text/link columns.
+        def w(label, currency=True):
+            floor = 130 if currency else 100
+            return max(floor, len(label) * 8 + 24)
+
         cols = [
             {
                 "label": _("Customer"),
                 "fieldname": "customer",
                 "fieldtype": "Link",
                 "options": "Customer",
-                "width": 200,
+                "width": 200,  # fixed: customer names vary widely in length
             },
             {
                 "label": _("Sales Person"),
                 "fieldname": "sales_person",
                 "fieldtype": "Data",
-                "width": 160,
+                "width": w("Sales Person", currency=False),
             },
         ]
 
@@ -133,81 +139,46 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "fieldname": f"range{i}",
                     "fieldtype": "Currency",
                     "options": "currency",
-                    "width": 120,
+                    "width": w(label),
+                }
+            )
+
+        currency_cols = [
+            ("Total Outstanding",         "outstanding"),
+            ("Future Payment",            "future_payment"),
+            ("Unbilled Sales",            "unbilled_sales"),
+            ("Cheques Required",          "cheques_required"),
+            ("Production OPRs",           "production_oprs"),
+            ("Total Exposure",            "total_exposure"),
+            ("Hold OPRs",                 "hold_oprs"),
+            ("Exposure after Hold OPRs",  "exposure_after_hold_oprs"),
+        ]
+        for label, fieldname in currency_cols:
+            cols.append(
+                {
+                    "label": _(label),
+                    "fieldname": fieldname,
+                    "fieldtype": "Currency",
+                    "options": "currency",
+                    "width": w(label),
                 }
             )
 
         cols.extend(
             [
                 {
-                    "label": _("Total Outstanding"),
-                    "fieldname": "outstanding",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 150,
-                },
-                {
-                    "label": _("Future Payment"),
-                    "fieldname": "future_payment",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 130,
-                },
-                {
-                    "label": _("Unbilled Sales"),
-                    "fieldname": "unbilled_sales",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 120,
-                },
-                {
-                    "label": _("Cheques Required"),
-                    "fieldname": "cheques_required",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 150,
-                },
-                {
-                    "label": _("Production OPRs"),
-                    "fieldname": "production_oprs",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 140,
-                },
-                {
-                    "label": _("Total Exposure"),
-                    "fieldname": "total_exposure",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 140,
-                },
-                {
-                    "label": _("Hold OPRs"),
-                    "fieldname": "hold_oprs",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 110,
-                },
-                {
-                    "label": _("Exposure after Hold OPRs"),
-                    "fieldname": "exposure_after_hold_oprs",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": 190,
-                },
-                {
                     "label": _("Payment Terms"),
                     "fieldname": "payment_terms",
                     "fieldtype": "Link",
                     "options": "Payment Terms Template",
-                    "width": 160,
+                    "width": w("Payment Terms", currency=False),
                 },
                 {
                     "label": _("Customer Group"),
                     "fieldname": "customer_group",
                     "fieldtype": "Link",
                     "options": "Customer Group",
-                    "width": 140,
+                    "width": w("Customer Group", currency=False),
                 },
                 {
                     "label": _("Currency"),
@@ -304,7 +275,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
             r["total_exposure"] = total_exposure
 
             # Exposure after Hold OPRs = Total Exposure − Hold OPRs
-            r["exposure_after_hold_oprs"] = flt(total_exposure - opr_on_hold, 2)
+            r["exposure_after_hold_oprs"] = flt(total_exposure + opr_on_hold, 2)
 
     def get_sales_person_map(self, customers):
         if not customers:
@@ -663,7 +634,7 @@ def download_excel_report(filters):
 
     # Freeze panes: lock header row and first 2 columns (Customer, Sales Person)
     # Customer Group is now the last visible column, so only 2 data cols frozen
-    ws.freeze_panes = "C2"
+    ws.freeze_panes = "B2"
 
     output = BytesIO()
     wb.save(output)
