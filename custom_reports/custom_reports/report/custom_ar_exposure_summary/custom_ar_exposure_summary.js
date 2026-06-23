@@ -176,7 +176,7 @@ function show_exposure_summary(report) {
 			<table class="table table-bordered">
 				<tr><td><b>${__("Total Customers")}</b></td><td class="text-right">${data.length}</td></tr>
 				<tr><td><b>${__("Total Outstanding")}</b></td><td class="text-right">${fmt(sum("outstanding"))}</td></tr>
-				<tr><td><b>${__("Future Payment")}</b></td><td class="text-right">${fmt(sum("future_payment"))}</td></tr>
+				<tr><td><b>${__("PDCs")}</b></td><td class="text-right">${fmt(sum("future_payment"))}</td></tr>
 				<tr><td><b>${__("Unbilled Sales")}</b></td><td class="text-right">${fmt(sum("unbilled_sales"))}</td></tr>
 				<tr><td><b>${__("Cheques Required")}</b></td><td class="text-right">${fmt(sum("cheques_required"))}</td></tr>
 				<tr><td><b>${__("Production OPRs")}</b></td><td class="text-right">${fmt(sum("production_oprs"))}</td></tr>

@@ -72,10 +72,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
             )
         ]
 
-        summary_rows.sort(
-            key=lambda r: flt(r.get("exposure_after_hold_oprs", 0), 2),
-            reverse=True,
-        )
+        summary_rows.sort(key=lambda r: (r.get("customer") or "").lower())
 
         return columns, summary_rows, message, None, None, 0
 
@@ -145,7 +142,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
 
         currency_cols = [
             ("Total Outstanding",         "outstanding"),
-            ("Future Payment",            "future_payment"),
+            ("PDCs",                       "future_payment"),
             ("Unbilled Sales",            "unbilled_sales"),
             ("Cheques Required",          "cheques_required"),
             ("Production OPRs",           "production_oprs"),
@@ -267,7 +264,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
             r["production_oprs"] = opr_under_prod
             r["hold_oprs"] = opr_on_hold
 
-            cheques_required = flt(max(outstanding - future_payment, 0), 2)
+            cheques_required = flt(outstanding - future_payment, 2)
             r["cheques_required"] = cheques_required
 
             # Total Exposure = Cheques Required + Unbilled Sales + Production OPRs
@@ -347,6 +344,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
               AND pe.posting_date > %(report_date)s
               AND pe.company = %(company)s
               AND per.allocated_amount > 0
+              AND COALESCE(pe.workflow_state, '') != 'Cheque Copy'
             GROUP BY pe.party
             """,
             params,
@@ -459,7 +457,6 @@ class CustomARExposureSummary(ReceivablePayableReport):
               AND customer_name IN %(customers)s
               {company_condition}
               AND workflow_state LIKE '%%Hold%%'
-              AND workflow_state NOT LIKE '%%Complet%%'
             GROUP BY customer_name
             """,
             opr_params,
