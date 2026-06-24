@@ -631,7 +631,7 @@ def download_excel_report(filters):
 
     # Freeze panes: lock header row and first 2 columns (Customer, Sales Person)
     # Customer Group is now the last visible column, so only 2 data cols frozen
-    ws.freeze_panes = "B2"
+    ws.freeze_panes = "C2"
 
     output = BytesIO()
     wb.save(output)
