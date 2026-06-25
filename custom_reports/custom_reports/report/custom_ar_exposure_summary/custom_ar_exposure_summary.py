@@ -40,15 +40,19 @@ class CustomARExposureSummary(ReceivablePayableReport):
         summary_rows = self.build_customer_summary(data)
         columns = self.build_required_columns()
 
-        # Add customers who have active OPRs but no submitted Sales Invoices
+        # Add customers who have active OPRs or unbilled DNs but no AR invoices
         existing_customers = {r["customer"] for r in summary_rows if r.get("customer")}
         opr_only = self.get_opr_only_customers(existing_customers)
-        if opr_only:
+        unbilled_only = self.get_unbilled_only_customers(
+            existing_customers | set(opr_only)
+        )
+        extra_customers = list(opr_only) + list(unbilled_only)
+        if extra_customers:
             default_currency = frappe.db.get_value(
                 "Company", self.filters.company, "default_currency"
             )
             bucket_count = len(self._get_ageing_labels())
-            for customer in opr_only:
+            for customer in extra_customers:
                 summary_rows.append(
                     {
                         "customer": customer,
@@ -60,13 +64,14 @@ class CustomARExposureSummary(ReceivablePayableReport):
 
         self.enrich_customer_rows(summary_rows)
 
-        # Exclude rows where Outstanding, Future Payment, Production OPRs,
-        # and Hold OPRs are all zero — these are inactive customers
+        # Hide rows where all exposure fields are zero (truly inactive customers).
+        # Unbilled Sales is included so customers with only unraised invoices still appear.
         summary_rows = [
             r for r in summary_rows
             if not (
                 flt(r.get("outstanding", 0), 2) == 0
                 and flt(r.get("future_payment", 0), 2) == 0
+                and flt(r.get("unbilled_sales", 0), 2) == 0
                 and flt(r.get("production_oprs", 0), 2) == 0
                 and flt(r.get("hold_oprs", 0), 2) == 0
             )
@@ -264,11 +269,11 @@ class CustomARExposureSummary(ReceivablePayableReport):
             r["production_oprs"] = opr_under_prod
             r["hold_oprs"] = opr_on_hold
 
-            cheques_required = flt(outstanding - future_payment, 2)
+            cheques_required = flt(outstanding - future_payment + unbilled_sales, 2)
             r["cheques_required"] = cheques_required
 
-            # Total Exposure = Cheques Required + Unbilled Sales + Production OPRs
-            total_exposure = flt(cheques_required + unbilled_sales + opr_under_prod, 2)
+            # Total Exposure = Cheques Required + Production OPRs
+            total_exposure = flt(cheques_required + opr_under_prod, 2)
             r["total_exposure"] = total_exposure
 
             # Exposure after Hold OPRs = Total Exposure − Hold OPRs
@@ -330,20 +335,17 @@ class CustomARExposureSummary(ReceivablePayableReport):
             "company": self.filters.company,
         }
 
-        # Payment Entries with future posting dates, using allocated_amount per reference
-        # (matches standard AR report: docstatus < 2, posting_date > report_date)
+        # Use paid_amount on the PE directly so unallocated PDCs are fully captured.
         pe_rows = frappe.db.sql(
             """
-            SELECT pe.party, SUM(per.allocated_amount) AS future_amount
+            SELECT pe.party, SUM(pe.paid_amount) AS future_amount
             FROM `tabPayment Entry` pe
-            INNER JOIN `tabPayment Entry Reference` per ON per.parent = pe.name
             WHERE pe.docstatus < 2
               AND pe.payment_type = 'Receive'
               AND pe.party_type = 'Customer'
               AND pe.party IN %(customers)s
               AND pe.posting_date > %(report_date)s
               AND pe.company = %(company)s
-              AND per.allocated_amount > 0
               AND COALESCE(pe.workflow_state, '') != 'Cheque Copy'
             GROUP BY pe.party
             """,
@@ -535,6 +537,62 @@ class CustomARExposureSummary(ReceivablePayableReport):
             row.customer_name
             for row in result
             if row.customer_name and row.customer_name not in existing_customers
+        ]
+
+    def get_unbilled_only_customers(self, existing_customers):
+        """Return customers with submitted 'To Bill' Delivery Notes but not yet
+        in the report (no AR outstanding and not already added via OPRs)."""
+        params = {
+            "company": self.filters.company,
+            "report_date": self.filters.report_date,
+        }
+        conditions = ""
+
+        if self.filters.get("customer_group"):
+            groups = get_customer_group_with_children(self.filters.customer_group)
+            group_customers = frappe.get_all(
+                "Customer",
+                filters={"customer_group": ["in", groups]},
+                pluck="name",
+            )
+            if not group_customers:
+                return []
+            conditions += " AND customer IN %(group_customers)s"
+            params["group_customers"] = tuple(group_customers)
+
+        if self.filters.get("sales_person"):
+            sp_customers = frappe.get_all(
+                "Customer",
+                filters={"sales_person": self.filters.sales_person},
+                pluck="name",
+            )
+            if not sp_customers:
+                return []
+            conditions += " AND customer IN %(sp_customers)s"
+            params["sp_customers"] = tuple(sp_customers)
+
+        if self.filters.get("customer"):
+            conditions += " AND customer = %(customer)s"
+            params["customer"] = self.filters.customer
+
+        result = frappe.db.sql(
+            f"""
+            SELECT DISTINCT customer
+            FROM `tabDelivery Note`
+            WHERE docstatus = 1
+              AND status = 'To Bill'
+              AND company = %(company)s
+              AND posting_date <= %(report_date)s
+              {conditions}
+            """,
+            params,
+            as_dict=True,
+        )
+
+        return [
+            row.customer
+            for row in result
+            if row.customer and row.customer not in existing_customers
         ]
 
 
