@@ -60,11 +60,9 @@ frappe.query_reports["Custom AR Exposure Summary"] = {
 		const header = datatable.header || wrapper.querySelector('.dt-header');
 		if (!bodyScrollable || !header) return;
 
-		// serialNoColumn=true (default) → col 0
-		// checkboxColumn=true → col 1
-		// User columns: Customer=2, CustomerGroup=3, SalesPerson=4
-		// Freeze cols 0-4 (serial + checkbox + 3 data cols)
-		const frozenIndices = [0, 1, 2, 3, 4];
+		// col 0: Serial No, col 1: Checkbox, col 2: Customer, col 3: Sales Person
+		// col 4 onwards: ageing buckets (not frozen)
+		const frozenIndices = [0, 1, 2, 3];
 
 		// Calculate cumulative left offsets from actual header cell widths
 		const offsets = {};
