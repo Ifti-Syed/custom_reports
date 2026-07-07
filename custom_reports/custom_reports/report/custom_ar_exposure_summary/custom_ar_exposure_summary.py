@@ -97,10 +97,15 @@ class CustomARExposureSummary(ReceivablePayableReport):
                 self.qb_selection_filter.append(self.ple.party == "__NO_CUSTOMERS__")
 
         if self.filters.get("sales_person"):
-            assigned_customers = frappe.get_all(
-                "Customer",
-                filters={"sales_person": self.filters.sales_person},
-                pluck="name",
+            fieldname = self.get_sales_person_fieldname()
+            assigned_customers = (
+                frappe.get_all(
+                    "Customer",
+                    filters={fieldname: self.filters.sales_person},
+                    pluck="name",
+                )
+                if fieldname
+                else []
             )
 
             if assigned_customers:
@@ -279,13 +284,32 @@ class CustomARExposureSummary(ReceivablePayableReport):
             # Exposure after Hold OPRs = Total Exposure − Hold OPRs
             r["exposure_after_hold_oprs"] = flt(total_exposure + opr_on_hold, 2)
 
+    def get_sales_person_fieldname(self):
+        """Different sites use different Customer fields for sales person.
+        Detect whichever of these actually exists on this site's Customer doctype."""
+        if not hasattr(self, "_sales_person_fieldname"):
+            candidates = (
+                "sales_person",
+                "primary_sales_person",
+                "custom_primary_sales_person",
+            )
+            meta = frappe.get_meta("Customer")
+            self._sales_person_fieldname = next(
+                (f for f in candidates if meta.has_field(f)), None
+            )
+        return self._sales_person_fieldname
+
     def get_sales_person_map(self, customers):
         if not customers:
             return {}
 
+        fieldname = self.get_sales_person_fieldname()
+        if not fieldname:
+            return {}
+
         result = frappe.db.sql(
-            """
-            SELECT name, sales_person
+            f"""
+            SELECT name, `{fieldname}` AS sales_person
             FROM `tabCustomer`
             WHERE name IN %(customers)s
             """,
@@ -505,10 +529,15 @@ class CustomARExposureSummary(ReceivablePayableReport):
             params["group_customers"] = group_customers
 
         if self.filters.get("sales_person"):
-            sp_customers = frappe.get_all(
-                "Customer",
-                filters={"sales_person": self.filters.sales_person},
-                pluck="name",
+            fieldname = self.get_sales_person_fieldname()
+            sp_customers = (
+                frappe.get_all(
+                    "Customer",
+                    filters={fieldname: self.filters.sales_person},
+                    pluck="name",
+                )
+                if fieldname
+                else []
             )
 
             if not sp_customers:
@@ -561,10 +590,15 @@ class CustomARExposureSummary(ReceivablePayableReport):
             params["group_customers"] = tuple(group_customers)
 
         if self.filters.get("sales_person"):
-            sp_customers = frappe.get_all(
-                "Customer",
-                filters={"sales_person": self.filters.sales_person},
-                pluck="name",
+            fieldname = self.get_sales_person_fieldname()
+            sp_customers = (
+                frappe.get_all(
+                    "Customer",
+                    filters={fieldname: self.filters.sales_person},
+                    pluck="name",
+                )
+                if fieldname
+                else []
             )
             if not sp_customers:
                 return []
