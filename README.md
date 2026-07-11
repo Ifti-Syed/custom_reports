@@ -30,4 +30,4 @@ Pre-commit is configured to use the following tools for checking and formatting 
 
 ### License
 
-mit
+Proprietary - Internal use only for CVS (Central Ventilation Systems). See `license.txt`.

@@ -3,7 +3,7 @@ app_title = "Custom Reports"
 app_publisher = "CVS HVAC"
 app_description = "Custom ERPNext Reports"
 app_email = "iftikhar.hussain@cvshvac.com"
-app_license = "mit"
+app_license = "Proprietary"
 
 # Apps
 # ------------------
