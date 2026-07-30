@@ -1,6 +1,6 @@
 app_name = "custom_reports"
 app_title = "Custom Reports"
-app_publisher = "CVS HVAC"
+app_publisher = "Iftikhar Hussain Syed"
 app_description = "Custom ERPNext Reports"
 app_email = "iftikhar.hussain@cvshvac.com"
 app_license = "Proprietary"

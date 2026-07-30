@@ -1,7 +1,7 @@
 [project]
 name = "custom_reports"
 authors = [
-    { name = "bench new-app custom_reports", email = "Iftikhar.hussain@cvshvac.com"}
+    { name = "Iftikhar Hussain Syed", email = "Iftikhar.hussain@cvshvac.com"}
 ]
 description = "ifti@DESKTOP-502V5I8:~/frappe-bench$ cd ~/frappe-bench"
 requires-python = ">=3.10"
