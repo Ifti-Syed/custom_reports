@@ -188,6 +188,20 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "width": w("Customer Group", currency=False),
                 },
                 {
+                    "label": _("Guarantee Cheque"),
+                    "fieldname": "guarantee_cheque",
+                    "fieldtype": "Currency",
+                    "options": "currency",
+                    "width": w("Guarantee Cheque"),
+                },
+                {
+                    "label": _("Credit Limit"),
+                    "fieldname": "credit_limit",
+                    "fieldtype": "Currency",
+                    "options": "currency",
+                    "width": w("Credit Limit"),
+                },
+                {
                     "label": _("Currency"),
                     "fieldname": "currency",
                     "fieldtype": "Link",
@@ -253,6 +267,8 @@ class CustomARExposureSummary(ReceivablePayableReport):
         future_payment_map = self.get_future_payment_map(customers)
         unbilled_map = self.get_unbilled_sales_map(customers)
         opr_prod_map, opr_hold_map = self.get_opr_data_map(customers)
+        guarantee_cheque_map = self.get_guarantee_cheque_map(customers)
+        credit_limit_map = self.get_credit_limit_map(customers)
 
         for r in rows:
             customer = r.get("customer")
@@ -273,6 +289,8 @@ class CustomARExposureSummary(ReceivablePayableReport):
             r["unbilled_sales"] = unbilled_sales
             r["production_oprs"] = opr_under_prod
             r["hold_oprs"] = opr_on_hold
+            r["guarantee_cheque"] = flt(guarantee_cheque_map.get(customer, 0), 2)
+            r["credit_limit"] = flt(credit_limit_map.get(customer, 0), 2)
 
             cheques_required = flt(outstanding - future_payment + unbilled_sales, 2)
             r["cheques_required"] = cheques_required
@@ -370,7 +388,7 @@ class CustomARExposureSummary(ReceivablePayableReport):
               AND pe.party IN %(customers)s
               AND pe.posting_date > %(report_date)s
               AND pe.company = %(company)s
-              AND COALESCE(pe.workflow_state, '') != 'Cheque Copy'
+              AND COALESCE(pe.workflow_state, '') NOT IN ('Cheque Copy', 'Guarantee Cheque')
             GROUP BY pe.party
             """,
             params,
@@ -405,6 +423,43 @@ class CustomARExposureSummary(ReceivablePayableReport):
             )
 
         return future_map
+
+    def get_guarantee_cheque_map(self, customers):
+        if not customers:
+            return {}
+
+        result = frappe.db.sql(
+            """
+            SELECT pe.party, SUM(pe.paid_amount) AS guarantee_amount
+            FROM `tabPayment Entry` pe
+            WHERE pe.docstatus < 2
+              AND pe.payment_type = 'Receive'
+              AND pe.party_type = 'Customer'
+              AND pe.party IN %(customers)s
+              AND pe.company = %(company)s
+              AND pe.workflow_state = 'Guarantee Cheque'
+            GROUP BY pe.party
+            """,
+            {"customers": customers, "company": self.filters.company},
+            as_dict=True,
+        )
+
+        return {row.party: flt(row.guarantee_amount, 2) for row in result}
+
+    def get_credit_limit_map(self, customers):
+        if not customers:
+            return {}
+
+        result = frappe.db.sql(
+            """
+            SELECT name, approved_credit_limit
+            FROM `tabCustomer`
+            WHERE name IN %(customers)s
+            """,
+            {"customers": customers},
+            as_dict=True,
+        )
+        return {row.name: flt(row.approved_credit_limit or 0, 2) for row in result}
 
     def get_unbilled_sales_map(self, customers):
         if not customers:
