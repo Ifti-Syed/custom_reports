@@ -181,11 +181,11 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "width": w("Payment Terms", currency=False),
                 },
                 {
-                    "label": _("Customer Group"),
-                    "fieldname": "customer_group",
-                    "fieldtype": "Link",
-                    "options": "Customer Group",
-                    "width": w("Customer Group", currency=False),
+                    "label": _("Credit Limit"),
+                    "fieldname": "credit_limit",
+                    "fieldtype": "Currency",
+                    "options": "currency",
+                    "width": w("Credit Limit"),
                 },
                 {
                     "label": _("Guarantee Cheque"),
@@ -195,11 +195,11 @@ class CustomARExposureSummary(ReceivablePayableReport):
                     "width": w("Guarantee Cheque"),
                 },
                 {
-                    "label": _("Credit Limit"),
-                    "fieldname": "credit_limit",
-                    "fieldtype": "Currency",
-                    "options": "currency",
-                    "width": w("Credit Limit"),
+                    "label": _("Customer Group"),
+                    "fieldname": "customer_group",
+                    "fieldtype": "Link",
+                    "options": "Customer Group",
+                    "width": w("Customer Group", currency=False),
                 },
                 {
                     "label": _("Currency"),
